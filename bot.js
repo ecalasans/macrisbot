@@ -18,6 +18,10 @@ const page_client = new dialogflow.PagesClient(
     {keyFilename: key_file}
 );
 
+const flows_client = new dialogflow.FlowsClient(
+    {keyFilename: key_file}
+)
+
 // Inicializa o bot
 const bot = new Telegraf(env.token);
 
@@ -72,6 +76,15 @@ const getRequiredParameters = async (page_path) => {
     return
 }
 
+// Função assíncrona que retorna a página inicial
+const getStartPage = async (flow_path) => {
+    const [flow] = await flows_client.getFlow({name: flow_path})
+
+    const start_page = flow.transitionRoutes[0].targetPage
+        || flow.transitionRoutes[0].targetFlow
+    console.log(start_page);
+    return start_page;
+}
 
 // Interação do bot
 bot.on(
@@ -87,12 +100,14 @@ bot.on(
         const session = ctx.session || {}
 
         //Captura a página ou seta para inicial
-        const current_page = session.currentPage ||
-            `projects/${project_id}/locations/${location}/agents/${agent_id}/flows/00000000-0000-0000-0000-000000000000/pages/START_PAGE`;
+        const flow_path = `projects/${project_id}/locations/${location}/agents/${agent_id}/flows/00000000-0000-0000-0000-000000000000`;
 
 
 
         try {
+            const start_page = await getStartPage(flow_path);
+            const current_page = session.current_page || start_page;
+
             const required_params = await getRequiredParameters(current_page);
             const parameters = {}
 
@@ -113,6 +128,12 @@ bot.on(
                 ...session,
                 current_page: response.currentPage.name
             }
+
+            Object.keys(response.parameters.fields).forEach(key => {
+                    const value = response.parameters.fields[key];
+                    ctx.session[key] = value.stringValue || value.structValue;
+                }
+            )
 
 
             if (response.responseMessages && response.responseMessages.length > 0) {
