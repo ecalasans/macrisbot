@@ -4,19 +4,19 @@ const {Telegraf} = require('telegraf');
 const dialogflow = require('@google-cloud/dialogflow-cx');
 const uuid = require('uuid');
 
-// Setup cliente Dialogflow
-const session_client = new dialogflow.SessionsClient(
-    {keyFilename: './mariacristina-03062024-686cd380ce3f.json'}
-);
-
-const page_client = new dialogflow.PagesClient(
-    {keyFilename: './mariacristina-03062024-686cd380ce3f.json'}
-);
-
 const project_id = env.DF_PROJECT_ID;
 const location = 'global';
 const agent_id = env.DF_AGENT_ID;
+const key_file = env.PATH_TO_DF_CREDENTIALS;
 
+// Setup cliente Dialogflow
+const session_client = new dialogflow.SessionsClient(
+    {keyFilename: key_file}
+);
+
+const page_client = new dialogflow.PagesClient(
+    {keyFilename: key_file}
+);
 
 // Inicializa o bot
 const bot = new Telegraf(env.token);
@@ -42,7 +42,9 @@ const queryToMacris = async (query, session_id, parameters = {}) => {
             languageCode: 'pt-BR'
         },
         queryParams: {
-            parameters: parameters,
+            parameters: {
+                fields: parameters,
+            },
         }
     }
 
@@ -55,71 +57,63 @@ const queryToMacris = async (query, session_id, parameters = {}) => {
 
 }
 
-// Função assíncrona para capturar detalhes da página
-const getPageDetails = async (flow_id, page_id) => {
-    const page_path = page_client.pagePath(project_id, location, agent_id, flow_id, page_id);
-    //const page_path = `projects/${project_id}/locations/${location}/agents/${agent_id}/` +
-        //`flows/${flow_id}/pages/${page_id}`;
+// Função assíncrona que captura os parâmetros
+const getRequiredParameters = async (page_path) => {
+    const page_client = new dialogflow.PagesClient(
+        {keyFilename: key_file}
+    );
 
     const [page] = await page_client.getPage({name: page_path});
-    return page;
+
+    if(page.form){
+        const required_parameters = page.form.parameters.filter(param => param.required);
+        return required_parameters.map(param => param.displayName);
+    }
+    return
 }
 
-// Armazena parâmetros da sessão
-const session_parameters = {}
 
 // Interação do bot
 bot.on(
     'text',
     async ctx => {
         // Cria o id de sessão
-        const session_id = ctx.update.message.from.id.toString();
+        const session_id = uuid.v4();
 
         // Captura o que foi digitado
         const query = ctx.update.message.text;
-        console.log(`User query: ${query}`);
 
-        // Se não existir o parâmetro, cria com ele vazio
-        if(!session_parameters[session_id]){
-            session_parameters[session_id] = {}
-        }
+        // Captura a sessão
+        const session = ctx.session || {}
+
+        //Captura a página ou seta para inicial
+        const current_page = session.currentPage ||
+            `projects/${project_id}/locations/${location}/agents/${agent_id}/flows/00000000-0000-0000-0000-000000000000/pages/START_PAGE`;
+
+
 
         try {
-            // Manda para o DF e aguarda a resposta
-            const response = await queryToMacris(query, session_id, session_parameters[session_id]);
-            console.log('Dialogflow CX response:', JSON.stringify(response, null, 2));
+            const required_params = await getRequiredParameters(current_page);
+            const parameters = {}
 
-            // Extract the flow ID and page ID from the response
-            const currentPage = response.currentPage.name;
-            const pathComponents = currentPage.split('/');
-            const flow_id = pathComponents[pathComponents.indexOf('flows') + 1];
-            const page_id = pathComponents[pathComponents.indexOf('pages') + 1];
-
-            console.log('Flow ID:', flow_id);
-            console.log('Page ID:', page_id);
-
-            //Pega detalhes da página
-            const page_details = await getPageDetails(flow_id, page_id);
-
-            // Extrai os parâmetros requeridos
-            if(page_details.form && page_details.form.parameters > 0){
-                const required_parameters = page_details.form.parameters
-                    .filter(parameter => parameter.required)
-                    .map(parameter => parameter.displayName);
-            }
-
-            // Atualiza os parâmetros
-            for(let param of required_parameters){
-                if(response.parameters.fields[param]){
-                    session_parameters[session_id][param] = response.parameters.fields[param];
+            // Captura os parâmetros
+            required_params.forEach(param => {
+                    if(session[param]){
+                        parameters[param] = {stringValue: session[param], kind: 'stringValue'};
+                    }
                 }
+            )
+
+            // Manda para o DF e aguarda a resposta
+            const response = await queryToMacris(query, session_id, parameters);
+            //console.log('Dialogflow CX response:', JSON.stringify(response, null, 2));
+
+            // Atualiza os valores de sessão
+            ctx.session = {
+                ...session,
+                current_page: response.currentPage.name
             }
 
-            if (requiredParameters.length > 0) {
-                ctx.reply(`Required parameters for the current page: ${requiredParameters.join(', ')}`);
-            } else {
-                ctx.reply('No required parameters for the current page.');
-            }
 
             if (response.responseMessages && response.responseMessages.length > 0) {
                 response.responseMessages.forEach(
