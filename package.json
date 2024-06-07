@@ -10,7 +10,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "dialogflow": "^1.2.0",
-    "telegraf": "^4.16.3"
+    "@google-cloud/dialogflow-cx": "^4.7.0",
+    "nodemon": "^3.1.2",
+    "telegraf": "^4.16.3",
+    "uuid": "^9.0.1"
   }
 }

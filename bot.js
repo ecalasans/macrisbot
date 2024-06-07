@@ -25,6 +25,9 @@ const flows_client = new dialogflow.FlowsClient(
 // Inicializa o bot
 const bot = new Telegraf(env.token);
 
+// Objeto para armazenar as sessões
+const sessions = {}
+
 //Função assíncrona que manda mensagem para o Dialogflow e recebe uma resposta
 const queryToMacris = async (query, session_id, parameters = {}) => {
     // Objeto de sessão com o DF
@@ -53,11 +56,11 @@ const queryToMacris = async (query, session_id, parameters = {}) => {
     }
 
     // Envia a requisição para o DF e aguarda a resposta
-    const responses = await session_client.detectIntent(request);
-    //console.log(responses);
+    const [responses] = await session_client.detectIntent(request);
+    console.log(responses);
 
     // Retorna a resposta
-    return responses[0].queryResult;
+    return responses.queryResult;
 
 }
 
@@ -90,25 +93,33 @@ const getStartPage = async (flow_path) => {
 bot.on(
     'text',
     async ctx => {
+        const user_id = ctx.update.message.from.id.toString();
+
         // Cria o id de sessão
-        const session_id = uuid.v4();
+        let session_id;
+        if (sessions[user_id]){
+            session_id = sessions[user_id];
+        } else {
+            session_id = uuid.v4();
+            sessions[user_id] = session_id;
+        }
 
         // Captura o que foi digitado
         const query = ctx.update.message.text;
 
-        // Captura a sessão
-        const session = ctx.session || {}
-
         //Captura a página ou seta para inicial
         const flow_path = `projects/${project_id}/locations/${location}/agents/${agent_id}/flows/00000000-0000-0000-0000-000000000000`;
 
-
+        //  Captura a sessão atual
+        ctx.session = ctx.session || {}
+        const session = ctx.session;
 
         try {
             const start_page = await getStartPage(flow_path);
             const current_page = session.current_page || start_page;
 
             const required_params = await getRequiredParameters(current_page);
+            console.log('Required parameters: ', required_params)
             const parameters = {}
 
             // Captura os parâmetros
@@ -129,11 +140,13 @@ bot.on(
                 current_page: response.currentPage.name
             }
 
-            Object.keys(response.parameters.fields).forEach(key => {
-                    const value = response.parameters.fields[key];
-                    ctx.session[key] = value.stringValue || value.structValue;
-                }
-            )
+            if (response.parameters && response.parameters.fields){
+                Object.keys(response.parameters.fields).forEach(key => {
+                        const value = response.parameters.fields[key];
+                        ctx.session[key] = value.stringValue || value.structValue;
+                    }
+                )
+            }
 
 
             if (response.responseMessages && response.responseMessages.length > 0) {
