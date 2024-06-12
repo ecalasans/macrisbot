@@ -96,6 +96,24 @@ const getCurrentFlowId = (response) => {
     return flow_id;
 }
 
+// Função para tratar custom payloads
+const handleCustomPayloads = (payload, ctx) => {
+    // Se tiver um richContent
+    if(payload.richContent){
+        payload.richContent.forEach(content => {  // Para cada parâmetro de richContent
+                content.forEach(item => {  // Para cada conteúdo do parâmetero
+                        if(item.type === "chips" && item.options){  // Navega as opções e imprime
+                            const options = item.options.map(option => option.text).join('\n');
+                            ctx.reply(`${options}`);
+                        }
+                    }
+                )
+            }
+        )
+    }
+}
+
+
 bot.start(
     async ctx => {
         ctx.reply('Grupo Pequenos Passos - Setor de Inovação e Tecnologia')
@@ -197,3 +215,25 @@ bot.on(
 )
 
 bot.launch();
+
+
+// {
+//     "richContent": [
+//     [
+//         {
+//             "options": [
+//                 {
+//                     "text": "Febre"
+//                 },
+//                 {
+//                     "text": "Tosse"
+//                 },
+//                 {
+//                     "text": "Diarreia"
+//                 }
+//             ],
+//             "type": "chips"
+//         }
+//     ]
+// ]
+// }
