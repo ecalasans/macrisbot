@@ -98,16 +98,34 @@ const getCurrentFlowId = (response) => {
 
 // Função para tratar custom payloads
 const handleCustomPayloads = (payload, ctx) => {
+    console.log('Custom Payload:', JSON.stringify(payload, null, 2));
+
     // Se tiver um richContent
-    if(payload.richContent){
-        payload.richContent.forEach(content => {  // Para cada parâmetro de richContent
-                content.forEach(item => {  // Para cada conteúdo do parâmetero
-                        if(item.type === "chips" && item.options){  // Navega as opções e imprime
-                            const options = item.options.map(option => option.text).join('\n');
-                            ctx.reply(`${options}`);
+    if(payload.fields && payload.fields.richContent){
+        const rich_content = payload.fields.richContent.listValue.values;
+        rich_content.forEach(content_item => {
+                const content_array = content_item.listValue.values;
+                content_array.forEach(item => {
+                        const item_struct = item.structValue.fields;
+                        if(item_struct.type && item_struct.type.stringValue === 'chips' && item_struct.options){
+                            const options = item_struct.options.listValue.values.map(option => {
+                                    const option_text = option.structValue.fields.text.stringValue;
+                                    return {
+                                        text: option_text,
+                                        callback_data: option_text
+                                    }
+                                }
+                            );
+                            ctx.reply('Posso te ajudar com esses sintomas...',
+                                {
+                                    reply_markup:{
+                                        inline_keyboard: [options]
+                                    }
+                                }
+                            )
                         }
                     }
-                )
+                );
             }
         )
     }
@@ -188,10 +206,13 @@ bot.on(
             if (response.responseMessages && response.responseMessages.length > 0) {
                 response.responseMessages.forEach(
                     (msg) => {
-                        if (msg.text && msg.text.text){
-                            const reply_msg =  msg.text.text[0]
+                        if (msg.text && msg.text.text) {
+                            const reply_msg = msg.text.text[0]
                             console.log(`Replying with: ${reply_msg}`);
-                            ctx.reply(reply_msg);
+                            ctx.reply(reply_msg)
+                        } else if (msg.payload){
+                            handleCustomPayloads(msg.payload, ctx);
+                            console.log(msg.payload);
                         } else {
                             console.log('Received a response message with no text.');
                         }
