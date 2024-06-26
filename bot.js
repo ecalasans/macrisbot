@@ -32,7 +32,6 @@ const sessions = {}
 //Função assíncrona que manda mensagem para o Dialogflow e recebe uma resposta
 const queryToMacris = async (query, session_id, parameters = {}) => {
     // Objeto de sessão com o DF
-    console.log(typeof(env.DF_PROJECT_ID));
     const session_path = session_client.projectLocationAgentSessionPath(
         project_id,
         location,
@@ -58,7 +57,7 @@ const queryToMacris = async (query, session_id, parameters = {}) => {
 
     // Envia a requisição para o DF e aguarda a resposta
     const [responses] = await session_client.detectIntent(request);
-    console.log(responses);
+    //console.log(responses);
 
     // Retorna a resposta
     return responses.queryResult;
@@ -98,7 +97,7 @@ const getCurrentFlowId = (response) => {
 
 // Função para tratar custom payloads
 const handleCustomPayloads = (payload, ctx) => {
-    console.log('Custom Payload:', JSON.stringify(payload, null, 2));
+    //console.log('Custom Payload:', JSON.stringify(payload, null, 2));
 
     // Se tiver um richContent
     if(payload.fields && payload.fields.richContent){
@@ -127,9 +126,52 @@ const handleCustomPayloads = (payload, ctx) => {
                     }
                 );
             }
-        )
+        );
     }
 }
+
+// Função assíncrona para lidar com as callbacks
+const handleCallbackQuery = async (ctx) => {
+    const user_id = ctx.from.id.toString();
+    const session_id = sessions[user_id]?.session_id;
+    const data = ctx.callbackQuery.data;
+
+    // Se não tiver em uma sessão encerra a função
+    if(!session_id){
+        ctx.reply('No session found.');
+        return
+    }
+
+    try {
+        // Parâmetros selecionados
+        const parameters = {
+            selectedOption : {
+                stringValue: data,
+                kind: 'stringValue'
+            }
+        }
+
+        const response = await queryToMacris(data, session_id, parameters);
+
+        if (response.responseMessages && response.responseMessages.length > 0){
+            response.responseMessages.forEach(msg => {
+                    if(msg.text && msg.text.text) {
+                        const reply_msg = msg.text.text[0];
+                        ctx.reply(reply_msg);
+                    } else if(msg.payload) {
+                        handleCustomPayloads(msg.payload, ctx);
+                    }
+                }
+            );
+        } else {
+            ctx.reply('Sem resposta para este parâmetero');
+        }
+    } catch(e) {
+        console.error('Erro do Dialogflow CX: ',e.message);
+        ctx.reply('Deu merda na função handleCallbackQuery');
+    }
+}
+
 
 
 bot.start(
@@ -225,9 +267,6 @@ bot.on(
                 ctx.reply('I didn’t understand that. Can you try rephrasing?');
             }
 
-            // Manda a resposta para o chat
-            //ctx.reply(response.responseMessages[0].text.text[0]);
-
         } catch (e) {
             console.error('Dialogflow CX error: ', e.message);
             ctx.reply('Deu merda...');
@@ -235,26 +274,8 @@ bot.on(
     }
 )
 
+bot.on('callback_query', handleCallbackQuery);
+
 bot.launch();
 
 
-// {
-//     "richContent": [
-//     [
-//         {
-//             "options": [
-//                 {
-//                     "text": "Febre"
-//                 },
-//                 {
-//                     "text": "Tosse"
-//                 },
-//                 {
-//                     "text": "Diarreia"
-//                 }
-//             ],
-//             "type": "chips"
-//         }
-//     ]
-// ]
-// }
