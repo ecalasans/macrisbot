@@ -4,6 +4,7 @@ const {Telegraf} = require('telegraf');
 const dialogflow = require('@google-cloud/dialogflow-cx');
 const uuid = require('uuid');
 const {message} = require('telegraf/filters');
+const axios = require('axios');
 
 const project_id = env.DF_PROJECT_ID;
 const location = 'global';
@@ -30,7 +31,7 @@ const bot = new Telegraf(env.token);
 const sessions = {}
 
 //Função assíncrona que manda mensagem para o Dialogflow e recebe uma resposta
-const queryToMacris = async (query, session_id, parameters = {}) => {
+const queryToMacris = async (query, session_id, parameters = {}, event = null) => {
     // Objeto de sessão com o DF
     const session_path = session_client.projectLocationAgentSessionPath(
         project_id,
@@ -42,16 +43,32 @@ const queryToMacris = async (query, session_id, parameters = {}) => {
     // Objeto de requisição ao DF - texto e parâmetros
     const request = {
         session: session_path,
-        queryInput: {
-            text: {
-                text: query
-            },
-            languageCode: 'pt-BR'
-        },
+        // queryInput: {
+        //     text: {
+        //         text: query
+        //     },
+        //     languageCode: 'pt-BR'
+        // },
         queryParams: {
             parameters: {
                 fields: parameters,
             },
+        }
+    };
+
+    if (event) {
+        request.queryInput = {
+            event: {
+                event: event
+            },
+            languageCode: 'pt-BR'
+        };
+    } else {
+        request.queryInput = {
+            text: {
+                text: query
+            },
+            languageCode: 'pt-BR'
         }
     }
 
@@ -271,6 +288,76 @@ bot.on(
 )
 
 bot.on('callback_query', handleCallbackQuery);
+
+// Trata eventos de fotos
+bot.on('photo',
+    async ctx => {
+        const user_id = ctx.update.message.from.id.toString();
+
+        // Cria o id de sessão
+        let session_id;
+        if (sessions[user_id]){
+            session_id = sessions[user_id].session_id;
+        } else {
+            session_id = uuid.v4();
+            sessions[user_id] = {
+                session_id,
+                data: {}
+            };
+        }
+
+        //Captura o id da foto de mais baixa resolução
+        const photo = ctx.update.message.photo[0].file_id;
+
+        // URL para acessar arquivo de foto a partir da API do Telegram
+        const photo_url = `${env.apiFileUrl}/getFile?file_id=${photo}`;
+
+        //Informações da foto
+        console.log('Photo:', photo);
+
+        //Feedback de recebimento
+        ctx.reply("Foto recebida com sucesso");
+
+        // Parâmetros para o evento
+        const params = {
+            uploaded_photo: {
+                stringValue: "Foto enviada",
+                kind: "stringValue"
+            },
+            photo_file_id: {
+                stringValue: photo,
+                kind: "stringValue"
+            }
+        }
+
+        // Disparo do evento
+        try{
+            const response = await queryToMacris(
+                "",
+                session_id,
+                params,
+                "comprovante"
+            );
+
+            if(response.responseMessages && response.responseMessages.length > 0) {
+                response.responseMessages.forEach(
+                    msg => {
+                        if (msg.text && msg.text.text) {
+                            const reply_msg = msg.text.text[0];
+                            ctx.reply(reply_msg);
+                        }
+                    }
+                )
+            } else {
+                ctx.reply('Comprovante enviado mas sem nenhuma resposta típica do DFCX!');
+            }
+
+        } catch (e) {
+            console.error('Erro ao disparar o evento:', e);
+            ctx.reply('Deu erro ao disparar o evento');
+        }
+    }
+);
 
 bot.launch();
 
