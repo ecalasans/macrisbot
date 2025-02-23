@@ -241,12 +241,6 @@ bot.on(
                 console.log('Required parameters: ', typeof(required_params));
                 const parameters = {}
 
-                // Captura os parâmetros
-
-
-                console.log('Required parameters:', required_params); // Logging required parameters
-                console.log('Session:', session_data); // Logging session data
-
                 // Manda para o DF e aguarda a resposta
                 const response = await queryToMacris(query, session_id, parameters);
                 //console.log('Dialogflow CX response:', JSON.stringify(response, null, 2));
@@ -268,14 +262,26 @@ bot.on(
                             const reply_msg = msg.text.text[0]
                             console.log(`Replying with: ${reply_msg}`);
                             await ctx.reply(reply_msg)
-                        } else if (msg.payload){
-                            await handleCustomPayloads(msg.payload, ctx);
+                        }
+                    }
+
+                    for(const msg of response.responseMessages) {
+                        if (msg.payload){
+                            setTimeout(
+                                async () => {
+                                    await handleCustomPayloads(msg.payload, ctx);
+                                },
+                                (500)
+                            )
                             console.log(msg.payload);
                         } else {
                             console.log('Received a response message with no text.');
                         }
                     }
+
                     console.log('Current page:', response.currentPage?.displayName);
+                    console.log('Required parameters:', required_params); // Logging required parameters
+                    console.log('Session:', session_data); // Logging session data
                 } else {
                     console.log('No response messages found');
                     ctx.reply('I didn’t understand that. Can you try rephrasing?');
